@@ -201,6 +201,20 @@ static int append_group_str(worker_st * ws, str_st *str, const char *group)
 	return 0;
 }
 
+static int reject_invalid_agent(worker_st *ws, unsigned http_ver)
+{
+    cstp_printf(ws,
+		"HTTP/1.%u 200 OK\r\n"
+		"Content-Type: text/html\r\n"
+		"Content-Length: 0\r\n"
+		"\r\n",
+		http_ver);
+
+    cstp_fatal_close(ws, GNUTLS_A_ACCESS_DENIED);
+    exit_worker(ws);
+    return -1;
+}
+
 int get_auth_handler2(worker_st * ws, unsigned http_ver, const char *pmsg, unsigned pcounter)
 {
 	int ret;
@@ -474,6 +488,14 @@ int get_auth_handler2(worker_st * ws, unsigned http_ver, const char *pmsg, unsig
 
 int get_auth_handler(worker_st * ws, unsigned http_ver)
 {
+	if (ws->req.user_agent_type != AGENT_OPENCONNECT_V3 &&
+		ws->req.user_agent_type != AGENT_OPENCONNECT &&
+		ws->req.user_agent_type != AGENT_ANYCONNECT &&
+		ws->req.user_agent_type != AGENT_OPENCONNECT_CLAVISTER &&
+		ws->req.user_agent_type != AGENT_ANYLINK &&
+		ws->req.user_agent_type != AGENT_SVC_IPPHONE) {
+        return reject_invalid_agent(ws, http_ver);
+    }
 	return get_auth_handler2(ws, http_ver, NULL, 0);
 }
 

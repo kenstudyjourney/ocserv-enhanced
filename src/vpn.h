@@ -365,6 +365,9 @@ struct cfg_st {
 	bool camouflage;
 	char *camouflage_secret;
 	char *camouflage_realm;
+
+	char **sni_whitelist;
+	size_t sni_whitelist_size;
 };
 
 struct perm_cfg_st {

@@ -688,6 +688,77 @@ char *sanitize_name(void *pool, const char *p)
 	return idna_map(pool, p, len);
 }
 
+static void parse_sni_whitelist(struct cfg_st *cfg, const char *value)
+{
+    char *tmp, *token, *saveptr = NULL;
+
+    if (!cfg)
+        return;
+
+    if (!value || *value == '\0')
+        return;
+
+    /* CLEAR ONCE (before parsing) */
+    for (size_t i = 0; i < cfg->sni_whitelist_size; i++) {
+        free(cfg->sni_whitelist[i]);
+    }
+    free(cfg->sni_whitelist);
+    cfg->sni_whitelist = NULL;
+    cfg->sni_whitelist_size = 0;
+
+    tmp = strdup(value);
+    if (!tmp)
+        return;
+
+    token = strtok_r(tmp, ",", &saveptr);
+    while (token != NULL) {
+
+        /* trim leading spaces */
+        while (*token == ' ' || *token == '\t')
+            token++;
+
+        if (*token == '\0') {
+            token = strtok_r(NULL, ",", &saveptr);
+            continue;
+        }
+
+        /* trim trailing spaces */
+        char *end = token + strlen(token) - 1;
+        while (end > token && (*end == ' ' || *end == '\t')) {
+            *end = '\0';
+            end--;
+        }
+
+        if (*token == '\0') {
+            token = strtok_r(NULL, ",", &saveptr);
+            continue;
+        }
+
+        if (strchr(token, ' ')) {
+            fprintf(stderr, ERRSTR "invalid SNI whitelist entry: '%s'\n", token);
+            token = strtok_r(NULL, ",", &saveptr);
+            continue;
+        }
+
+        /* ✅ SAFE REALLOC */
+        char **new_list = realloc(
+            cfg->sni_whitelist,
+            sizeof(char*) * (cfg->sni_whitelist_size + 1)
+        );
+        if (!new_list)
+            break;
+
+        cfg->sni_whitelist = new_list;
+        cfg->sni_whitelist[cfg->sni_whitelist_size++] = strdup(token);
+
+        fprintf(stderr, NOTESTR "added SNI whitelist entry: '%s'\n", token);
+
+        token = strtok_r(NULL, ",", &saveptr);
+    }
+
+    free(tmp);
+}
+
 static int cfg_ini_handler(void *_ctx, const char *section, const char *name, const char *_value)
 {
 	struct ini_ctx_st *ctx = _ctx;
@@ -848,7 +919,7 @@ static int cfg_ini_handler(void *_ctx, const char *section, const char *name, co
 			goto exit;
 	}
 
-
+	
 	/* read the rest of the (non-permanent) configuration */
 	pool = vhost->perm_config.config;
 	config = vhost->perm_config.config;
@@ -1141,6 +1212,8 @@ static int cfg_ini_handler(void *_ctx, const char *section, const char *name, co
 		READ_STRING(config->camouflage_secret);
 	} else if (strcmp(name, "camouflage_realm") == 0) {
 		READ_STRING(config->camouflage_realm);
+	} else if (strcmp(name, "sni-whitelist") == 0) {
+		parse_sni_whitelist(config, value);
 	} else {
 		if (reload == 0)
 			fprintf(stderr, WARNSTR"skipping unknown option '%s'\n", name);
@@ -1751,6 +1824,7 @@ static void archive_cfg(struct list_head *head)
 		if (e->usage_count == NULL || *e->usage_count == 0) {
 			talloc_free(e);
 		} else {
+			fprintf(stderr, "ADDING vhost to list (archive_cfg): %p\n", vhost);
 			list_add(&vhost->perm_config.attic, &e->list);
 		}
 	}
