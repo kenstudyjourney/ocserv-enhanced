@@ -1,0 +1,48 @@
+#!/bin/bash
+
+#echo $USERNAME : $REASON : $DEVICE
+
+verify_env_set() {
+	if test -z "${!1}";then
+		env >out.$REASON.fail.tmp
+		echo "$1 environment variable was not set" >>out.$REASON.fail.tmp
+		exit 1
+	fi
+}
+
+# Verify the common environment variables
+verify_env_set "IP_REMOTE"
+verify_env_set "REASON"
+verify_env_set "HOSTNAME"
+verify_env_set "REMOTE_HOSTNAME"
+verify_env_set "USERNAME"
+verify_env_set "USER_AGENT"
+verify_env_set "DEVICE_PLATFORM"
+verify_env_set "DEVICE_TYPE"
+
+case "$REASON" in
+  connect)
+	verify_env_set "DEVICE"
+
+	test "${OCSERV_DNS}" = "192.168.1.1 192.168.5.1 " && \
+	test "${OCSERV_DNS4}" = "192.168.1.1 192.168.5.1 " && \
+	test "${OCSERV_ROUTES}" = "192.168.1.0/255.255.255.0 192.168.5.0/255.255.255.0 " && \
+	test "${OCSERV_ROUTES4}" = "192.168.1.0/255.255.255.0 192.168.5.0/255.255.255.0 " && \
+	echo "${IP_REMOTE}" > connect.ok
+	;;
+  disconnect)
+	if ! test -z "$DEVICE";then
+		test "${OCSERV_DNS}" = "192.168.1.1 192.168.5.1 " && \
+		test "${OCSERV_DNS4}" = "192.168.1.1 192.168.5.1 " && \
+		test "${OCSERV_ROUTES}" = "192.168.1.0/255.255.255.0 192.168.5.0/255.255.255.0 " && \
+		test "${OCSERV_ROUTES4}" = "192.168.1.0/255.255.255.0 192.168.5.0/255.255.255.0 " && \
+		echo "${IP_REMOTE}" > disconnect.ok
+	fi
+	;;
+  "host-update")
+	verify_env_set "HOSTNAME"
+	echo > host-update.ok
+	;;
+esac
+
+exit 0

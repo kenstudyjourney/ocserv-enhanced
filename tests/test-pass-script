@@ -1,0 +1,220 @@
+#!/bin/bash
+#
+# Copyright (C) 2013-2020 Nikos Mavrogiannopoulos
+#
+# This file is part of ocserv.
+#
+# ocserv is free software; you can redistribute it and/or modify it
+# under the terms of the GNU General Public License as published by the
+# Free Software Foundation; either version 2 of the License, or (at
+# your option) any later version.
+#
+# ocserv is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with GnuTLS; if not, write to the Free Software Foundation,
+# Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+
+SERV="${SERV:-../src/ocserv}"
+srcdir=${srcdir:-.}
+builddir=${builddir:-.}
+OPIDFILE=pass-script.$$.tmp
+OPIDFILE2=pass-script2.$$.tmp
+PARAMSFILE=pass-script.params.$$.tmp
+
+. `dirname $0`/common.sh
+
+eval "${GETPORT}"
+
+echo "Testing connect and disconnect script behavior"
+
+rm -f ${OPIDFILE}
+rm -f ${OPIDFILE2}
+
+function finish {
+  echo " * Cleaning up..."
+  rm -f ${builddir}/connect.ok
+  rm -f ${builddir}/disconnect.ok
+  rm -f ${builddir}/host-update.ok
+  test -n "${PID}" && kill ${PID} >/dev/null 2>&1
+  test -f ${OPIDFILE} && kill $(cat ${OPIDFILE}) >/dev/null 2>&1
+  rm -f ${OPIDFILE}
+  rm -f ${OPIDFILE2}
+  rm -f ${TMPFILE}
+  rm -f ${PARAMSFILE}
+  test -n "${PID}" && kill ${PID}
+}
+trap finish EXIT
+
+rm -f ${builddir}/connect.ok
+rm -f ${builddir}/disconnect.ok
+
+OPENCONNECT="$OPENCONNECT --os=android"
+
+$OPENCONNECT --help|grep local-hostname >/dev/null
+if test $? != 0;then
+	echo "Openconnect doesn't support --local-hostname"
+	exit 77
+fi
+
+echo " * Testing local backend with username-password... "
+
+update_config test-pass-script.config
+launch_server -d 1 -f -c "${CONFIG}" & PID=$!
+wait_server $PID
+
+echo " * Connecting to obtain cookie with wrong username... "
+( echo "tost" | $OPENCONNECT -q localhost:$PORT -u tost --servercert=pin-sha256:xp3scfzy3rOQsv9NcOve/8YVVv+pHr4qNCXEXrNl5s8= --cookieonly >/dev/null 2>&1 ) &&
+	fail $PID "Received cookie when we shouldn't"
+
+rm -f ${builddir}/connect.ok
+rm -f ${builddir}/disconnect.ok
+rm -f ${builddir}/host-update.ok
+#test special characters
+
+echo " * Connecting to obtain cookie... "
+( echo "!@#$%^&*()<>" | $OPENCONNECT -q localhost:$PORT -u "sp@c/al" --servercert=pin-sha256:xp3scfzy3rOQsv9NcOve/8YVVv+pHr4qNCXEXrNl5s8= --cookieonly >/dev/null 2>&1 ) ||
+	fail $PID "Could not receive cookie from server"
+
+echo " * Re-connecting to force script run... "
+echo "!@#$%^&*()<>" | timeout 7 $OPENCONNECT -q --local-hostname='mylocalname' localhost:$PORT -u "sp@c/al" --servercert=pin-sha256:xp3scfzy3rOQsv9NcOve/8YVVv+pHr4qNCXEXrNl5s8= -s /bin/true
+
+TIMEOUT=5
+while ! test -f ${builddir}/disconnect.ok; do
+    TIMEOUT=$(($TIMEOUT - 1))
+    if [ $TIMEOUT -eq 0 ]; then
+	echo "Timed out waiting for ${builddir}/disconnect.ok (1)"
+	exit 1
+    fi
+    sleep 1
+done
+
+if ! test -f ${builddir}/connect.ok;then
+	echo "Connect script was not run"
+	exit 1
+fi
+
+if ! test -f ${builddir}/host-update.ok;then
+	echo "Host-update script was not run (1)"
+	exit 1
+fi
+
+if ! test -f ${builddir}/disconnect.ok;then
+	echo "Disconnect script was not run properly (1)"
+	exit 1
+fi
+
+rm -f ${builddir}/connect.ok
+rm -f ${builddir}/disconnect.ok
+rm -f ${builddir}/host-update.ok
+
+echo " * Re-connecting to get cookie... "
+echo "test2" | $OPENCONNECT -q localhost:$PORT -u "test2" --authenticate --servercert=pin-sha256:xp3scfzy3rOQsv9NcOve/8YVVv+pHr4qNCXEXrNl5s8= -s /bin/true >${PARAMSFILE}
+if test $? != 0;then
+	echo "Could not connect"
+	cat ${PARAMSFILE}
+	exit 1
+fi
+
+grep COOKIE ${PARAMSFILE}
+if test $? != 0;then
+	echo "Did not get cookie"
+	exit 1
+fi
+
+echo " * Re-connecting to force session stealing... "
+eval "$(grep COOKIE ${PARAMSFILE})"
+echo ${COOKIE}| $OPENCONNECT --local-hostname='mylocalname' localhost:$PORT -u "test2" --reconnect-timeout 0 --cookie-on-stdin --servercert=pin-sha256:xp3scfzy3rOQsv9NcOve/8YVVv+pHr4qNCXEXrNl5s8= -s /bin/true --pid-file=${OPIDFILE} -b
+
+echo " - Pausing client"
+TIMEOUT=4
+while ! test -f ${OPIDFILE}; do
+    TIMEOUT=$(($TIMEOUT - 1))
+    if [ $TIMEOUT -eq 0 ]; then
+	echo "Timed out waiting for ${OPIDFILE}"
+	exit 1
+    fi
+    sleep 1
+done
+
+kill -s STOP $(cat ${OPIDFILE})
+
+TIMEOUT=12
+while ! test -f ${builddir}/connect.ok; do
+    TIMEOUT=$(($TIMEOUT - 1))
+    if [ $TIMEOUT -eq 0 ]; then
+	echo "Timed out waiting for ${builddir}/connect.ok"
+	exit 1
+    fi
+    sleep 1
+done
+
+rm -f ${builddir}/connect.ok
+rm -f ${builddir}/disconnect.ok
+
+echo " * Re-connecting to steal previous IP address... "
+echo ${COOKIE} | $OPENCONNECT -q --local-hostname='mylocalname' localhost:$PORT -u "test2" --reconnect-timeout 0 --cookie-on-stdin --servercert=pin-sha256:xp3scfzy3rOQsv9NcOve/8YVVv+pHr4qNCXEXrNl5s8= -s /bin/true --pid-file=${OPIDFILE2} -b
+
+echo " - Resuming (disconnected) client"
+kill -s CONT $(cat ${OPIDFILE})
+
+TIMEOUT=6
+while ! test -f ${builddir}/connect.ok; do
+    TIMEOUT=$(($TIMEOUT - 1))
+    if [ $TIMEOUT -eq 0 ]; then
+	echo "Timed out waiting for ${builddir}/connect.ok (3)"
+	exit 1
+    fi
+    sleep 1
+done
+
+TIMEOUT=6
+while ! test -f ${builddir}/disconnect.ok; do
+    TIMEOUT=$(($TIMEOUT - 1))
+    if [ $TIMEOUT -eq 0 ]; then
+	echo "Timed out waiting for ${builddir}/disconnect.ok (3)"
+	exit 1
+    fi
+    sleep 1
+done
+
+rm -f ${builddir}/connect.ok
+rm -f ${builddir}/disconnect.ok
+
+echo " - Killing all clients"
+sleep 2
+test -f ${OPIDFILE2} && kill $(cat ${OPIDFILE2})
+test -f ${OPIDFILE} && kill $(cat ${OPIDFILE})
+
+echo " - Last check of files"
+
+TIMEOUT=6
+while ! test -f ${builddir}/disconnect.ok; do
+    TIMEOUT=$(($TIMEOUT - 1))
+    if [ $TIMEOUT -eq 0 ]; then
+	echo "Timed out waiting for ${builddir}/disconnect.ok (4)"
+	exit 1
+    fi
+    sleep 1
+done
+
+
+sleep 5
+echo " - Check server status"
+
+( echo "!@#$%^&*()<>" | $OPENCONNECT --local-hostname='mylocalname' -q localhost:$PORT -u "sp@c/al" --servercert=pin-sha256:xp3scfzy3rOQsv9NcOve/8YVVv+pHr4qNCXEXrNl5s8= --cookieonly >/dev/null 2>&1 ) ||
+	fail $PID "Could not receive cookie from server"
+
+echo " - Killing server"
+kill $PID
+PID=""
+wait
+
+echo "Script tests were successful"
+
+rm -f ${CONFIG}
+
+exit 0
