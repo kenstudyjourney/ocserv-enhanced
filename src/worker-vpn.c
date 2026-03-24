@@ -954,12 +954,16 @@ void vpn_server(struct worker_st *ws)
 		if (!HAVE_VHOSTS(ws)) {
 			// single vhost
 			peek_client_hello(ws, session, ws->conn_fd);  // safely read SNI
-			oclog(ws, LOG_INFO, "Client SNI (peeked): %s", ws->buffer);
+
+            char host_buf[256] = {0};
+            const char *host = extract_host_from_buffer(ws->buffer, sizeof(ws->buffer), host_buf, sizeof(host_buf));
+
+			oclog(ws, LOG_INFO, "Client SNI (peeked): %s", host);
 
 			int allowed = 0;
             if (cfg->sni_whitelist_size > 0) {
                 for (size_t i = 0; i < cfg->sni_whitelist_size; i++) {
-                    if (strcasecmp((char *)ws->buffer, cfg->sni_whitelist[i]) == 0) {
+                    if (strcasecmp((char *)host, cfg->sni_whitelist[i]) == 0) {
                         allowed = 1;
                         break;
                     }
@@ -970,7 +974,13 @@ void vpn_server(struct worker_st *ws)
             }
 
 			if (!allowed) {
-                const char *sni = (char *)ws->buffer;
+                // char sni_buf[256] = {0};
+                // const char *sni = extract_sni_from_client_hello(
+                //     ws->buffer,
+                //     sizeof(ws->buffer),
+                //     sni_buf,
+                //     sizeof(sni_buf)
+                // );
 
                 /* === timestamp === */
                 char ts[64];
@@ -989,7 +999,7 @@ void vpn_server(struct worker_st *ws)
                     "[%s] %s %s \"%s\" \"%s\" %03d",
                     ts,
                     src_ip,
-                    sni,
+                    host,
                     ua,
                     path,
                     status
@@ -1004,11 +1014,11 @@ void vpn_server(struct worker_st *ws)
 
                 /* === write log === */
                 if (dir && dir[0]) {
-                    log_access_write(ws, ts, src_ip, sni, ua, path, status);
+                    log_access_write(ws, ts, src_ip, host, ua, path, status);
                 }
 
                 /* === normal log === */
-                oclog(ws, LOG_ERR, "Invalid SNI: %s, closing connection", sni);
+                oclog(ws, LOG_ERR, "Invalid SNI: %s, closing connection", host);
 
                 /* === close === */
                 cstp_close(ws);

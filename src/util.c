@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <string.h>
+#include <ctype.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -93,4 +94,131 @@ void log_access_write(worker_st *ws, const char *ts, const char *src_ip, const c
     }
 
     close(fd);
+}
+
+/* Extract SNI from TLS ClientHello buffer */
+const char *extract_sni_from_client_hello(uint8_t *buf, size_t len, char *out, size_t outlen)
+{
+    size_t i = 0;
+
+    /* skip TLS record header (5 bytes) */
+    if (len < 5)
+        return "";
+
+    i = 5;
+
+    /* skip handshake header */
+    if (i + 4 > len)
+        return "";
+
+    i += 4;
+
+    /* skip version + random */
+    if (i + 34 > len)
+        return "";
+
+    i += 34;
+
+    /* session id */
+    if (i + 1 > len)
+        return "";
+    uint8_t session_len = buf[i];
+    i += 1 + session_len;
+
+    /* cipher suites */
+    if (i + 2 > len)
+        return "";
+    uint16_t cipher_len = (buf[i] << 8) | buf[i+1];
+    i += 2 + cipher_len;
+
+    /* compression */
+    if (i + 1 > len)
+        return "";
+    uint8_t comp_len = buf[i];
+    i += 1 + comp_len;
+
+    /* extensions */
+    if (i + 2 > len)
+        return "";
+    uint16_t ext_len = (buf[i] << 8) | buf[i+1];
+    i += 2;
+
+    size_t end = i + ext_len;
+
+    while (i + 4 <= end && i + 4 <= len) {
+        uint16_t type = (buf[i] << 8) | buf[i+1];
+        uint16_t size = (buf[i+2] << 8) | buf[i+3];
+        i += 4;
+
+        if (type == 0x0000) { /* SNI */
+            size_t j = i + 2; /* skip list length */
+
+            if (j + 3 > len)
+                return "";
+
+            j++; /* name type */
+            uint16_t name_len = (buf[j] << 8) | buf[j+1];
+            j += 2;
+
+            if (j + name_len > len || name_len >= outlen)
+                return "";
+
+            memcpy(out, &buf[j], name_len);
+            out[name_len] = '\0';
+            return out;
+        }
+
+        i += size;
+    }
+
+    return "";
+}
+
+/* Extract SNI (TLS) or Host header (HTTP) */
+const char *extract_host_from_buffer(uint8_t *buf, size_t len, char *out, size_t outlen)
+{
+    /* --- Try TLS ClientHello --- */
+    const char *sni = extract_sni_from_client_hello(buf, len, out, outlen);
+    if (sni[0] != '\0')
+        return sni;
+
+    /* --- Fallback: try HTTP Host header --- */
+    /* buf is ASCII, null-terminate safely */
+    char tmp[1024] = {0};
+    size_t copy_len = len < sizeof(tmp)-1 ? len : sizeof(tmp)-1;
+    memcpy(tmp, buf, copy_len);
+    tmp[copy_len] = '\0';
+
+    /* simple line-based search */
+    const char *line = tmp;
+    while (*line) {
+        /* find end of line */
+        const char *eol = strstr(line, "\r\n");
+        if (!eol)
+            eol = line + strlen(line);
+
+        if (strncasecmp(line, "Host:", 5) == 0) {
+            /* skip "Host:" and whitespace */
+            const char *p = line + 5;
+            while (*p && isspace((unsigned char)*p)) p++;
+
+            size_t host_len = eol - p;
+            if (host_len > outlen - 6)   // 5 for "HTTP:" + 1 for '\0'
+                host_len = outlen - 6;
+
+            /* copy with prefix "HTTP:" */
+            memcpy(out, "HTTP:", 5);
+            memcpy(out + 5, p, host_len);
+            out[5 + host_len] = '\0';
+            return out;
+        }
+
+        /* move to next line */
+        if (*eol == '\0') break;
+        line = eol + 2; /* skip \r\n */
+    }
+
+    /* fallback: unknown host */
+    out[0] = '\0';
+    return out;
 }
