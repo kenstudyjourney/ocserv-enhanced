@@ -1214,6 +1214,10 @@ static int cfg_ini_handler(void *_ctx, const char *section, const char *name, co
 		READ_STRING(config->camouflage_realm);
 	} else if (strcmp(name, "sni-whitelist") == 0) {
 		parse_sni_whitelist(config, value);
+	} else if (strcmp(name, "log-access-dir") == 0) {
+		READ_STRING(config->log_access_dir);
+	} else if (strcmp(name, "log-access-timezone") == 0) {
+		READ_STRING(config->log_access_timezone);
 	} else {
 		if (reload == 0)
 			fprintf(stderr, WARNSTR"skipping unknown option '%s'\n", name);

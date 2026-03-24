@@ -41,6 +41,7 @@
 #include <worker.h>
 #include <common.h>
 #include <tlslib.h>
+#include <util.h>
 
 #include <llhttp.h>
 
@@ -203,12 +204,75 @@ static int append_group_str(worker_st * ws, str_st *str, const char *group)
 
 static int reject_invalid_agent(worker_st *ws, unsigned http_ver)
 {
+    oclog(ws, LOG_INFO, "entering `reject_invalid_agent` ...");
+
+    const char *dir = WSCONFIG(ws)->log_access_dir;
+    const char *tz  = WSCONFIG(ws)->log_access_timezone;
+
+    /* === Extract fields === */
+
+    /* timestamp */
+    char ts[64];
+    format_iso8601(ts, sizeof(ts), tz);
+
+    /* source IP */
+    const char *src_ip = ws->remote_ip_str[0] ? ws->remote_ip_str : "unknown";
+
+    /* SNI */
+	char sni_buf[256] = {0};
+	const char *sni = "";
+
+	if (ws->hostname[0]) {
+		sni = ws->hostname;
+	} else {
+		unsigned int type;
+		size_t len = sizeof(sni_buf) - 1;
+
+		if (gnutls_server_name_get(ws->session, sni_buf, &len, &type, 0) == 0 &&
+			type == GNUTLS_NAME_DNS) {
+			sni_buf[len] = '\0';
+			sni = sni_buf;
+		}
+	}
+
+    /* User-Agent */
+    const char *ua = ws->req.user_agent;
+
+    /* Path */
+    const char *path = ws->req.url;
+
+    /* status (your reject case = 000) */
+    int status = 200;
+
+    /* === Print log line === */
+    oclog(ws, LOG_INFO,
+        "[%s] %s %s \"%s\" \"%s\" %03d",
+        ts,
+        src_ip,
+        sni,
+        ua,
+        path,
+        status
+    );
+
+    /* Debug config */
+    if (dir && dir[0]) {
+        oclog(ws, LOG_INFO, "access log directory: %s", dir);
+    } else {
+        oclog(ws, LOG_INFO, "access log directory not set");
+    }
+
+	if (dir && dir[0]) {
+		log_access_write(ws, ts, src_ip, sni, ua, path, status);
+    }
+
+    /* === Original behavior === */
     cstp_printf(ws,
-		"HTTP/1.%u 200 OK\r\n"
-		"Content-Type: text/html\r\n"
-		"Content-Length: 0\r\n"
-		"\r\n",
-		http_ver);
+        "HTTP/1.%u 200 OK\r\n"
+        "Content-Type: text/html\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n",
+        http_ver);
 
     cstp_fatal_close(ws, GNUTLS_A_ACCESS_DENIED);
     exit_worker(ws);
@@ -496,6 +560,63 @@ int get_auth_handler(worker_st * ws, unsigned http_ver)
 		ws->req.user_agent_type != AGENT_SVC_IPPHONE) {
         return reject_invalid_agent(ws, http_ver);
     }
+
+	/* === logging for valid client === */
+	const char *dir = WSCONFIG(ws)->log_access_dir;
+	const char *tz = WSCONFIG(ws)->log_access_timezone;
+
+	/* timestamp */
+	char ts[64];
+	format_iso8601(ts, sizeof(ts), tz);
+
+	/* source IP */
+	const char *src_ip = ws->remote_ip_str[0] ? ws->remote_ip_str : "unknown";
+
+	/* User-Agent */
+	const char *ua = ws->req.user_agent;
+
+	/* Path */
+	const char *path = ws->req.url;
+
+	/* status */
+	int status = 407; // HTTP/1.1 407 Proxy Authentication Required
+
+	/* SNI */
+	char sni_buf[256] = {0};
+	const char *sni = "";
+
+	unsigned int type;
+	size_t len = sizeof(sni_buf) - 1;
+
+	if (gnutls_server_name_get(ws->session, sni_buf, &len, &type, 0) == 0 &&
+		type == GNUTLS_NAME_DNS) {
+		sni_buf[len] = '\0';
+		sni = sni_buf;
+	}
+
+	/* === Print log line === */
+	oclog(ws, LOG_INFO,
+		"[%s] %s %s \"%s\" \"%s\" %03d",
+		ts,
+		src_ip,
+		sni,
+		ua,
+		path,
+		status
+	);
+
+	/* Debug config */
+	if (dir && dir[0]) {
+		oclog(ws, LOG_INFO, "access log directory: %s", dir);
+	} else {
+		oclog(ws, LOG_INFO, "access log directory not set");
+	}
+
+	/* === write log === */
+	if (dir && dir[0]) {
+		log_access_write(ws, ts, src_ip, sni, ua, path, status);
+	}
+
 	return get_auth_handler2(ws, http_ver, NULL, 0);
 }
 

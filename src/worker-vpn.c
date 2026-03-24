@@ -59,6 +59,7 @@
 #include <worker.h>
 #include <tlslib.h>
 #include <llhttp.h>
+#include <util.h>
 
 #if defined(CAPTURE_LATENCY_SUPPORT)
 #include <linux/net_tstamp.h>
@@ -925,6 +926,9 @@ void vpn_server(struct worker_st *ws)
 
         struct cfg_st *cfg = GETCONFIG(ws);
 
+        const char *dir = WSCONFIG(ws)->log_access_dir;
+        const char *tz  = WSCONFIG(ws)->log_access_timezone;
+
         // oclog(ws, LOG_INFO, "sni_whitelist_size: %zu", cfg->sni_whitelist_size);
 
         // oclog(ws, LOG_INFO, "Printing Whitelisted SNIs:");
@@ -953,18 +957,63 @@ void vpn_server(struct worker_st *ws)
 			oclog(ws, LOG_INFO, "Client SNI (peeked): %s", ws->buffer);
 
 			int allowed = 0;
-			for (size_t i = 0; i < cfg->sni_whitelist_size; i++) {
-				if (strcasecmp((char *)ws->buffer, cfg->sni_whitelist[i]) == 0) {
-					allowed = 1;
-					break;
-				}
-			}
+            if (cfg->sni_whitelist_size > 0) {
+                for (size_t i = 0; i < cfg->sni_whitelist_size; i++) {
+                    if (strcasecmp((char *)ws->buffer, cfg->sni_whitelist[i]) == 0) {
+                        allowed = 1;
+                        break;
+                    }
+                }
+            } else {
+                allowed = 1;
+    			oclog(ws, LOG_WARNING, "No SNI Whitelist - Allowed");
+            }
 
 			if (!allowed) {
-				oclog(ws, LOG_ERR, "Invalid SNI: %s, closing connection", ws->buffer);
-				cstp_close(ws);  // safely close the connection
-				return;
-			}
+                const char *sni = (char *)ws->buffer;
+
+                /* === timestamp === */
+                char ts[64];
+                format_iso8601(ts, sizeof(ts), tz);
+
+                /* === src IP === */
+                const char *src_ip = ws->remote_ip_str[0] ? ws->remote_ip_str : "unknown";
+
+                /* === TCP RST case === */
+                const char *ua = "";
+                const char *path = "";
+                int status = 000;
+
+                /* === Print log line === */
+                oclog(ws, LOG_INFO,
+                    "[%s] %s %s \"%s\" \"%s\" %03d",
+                    ts,
+                    src_ip,
+                    sni,
+                    ua,
+                    path,
+                    status
+                );
+
+                /* Debug config */
+                if (dir && dir[0]) {
+                    oclog(ws, LOG_INFO, "access log directory: %s", dir);
+                } else {
+                    oclog(ws, LOG_INFO, "access log directory not set");
+                }
+
+                /* === write log === */
+                if (dir && dir[0]) {
+                    log_access_write(ws, ts, src_ip, sni, ua, path, status);
+                }
+
+                /* === normal log === */
+                oclog(ws, LOG_ERR, "Invalid SNI: %s, closing connection", sni);
+
+                /* === close === */
+                cstp_close(ws);
+                return;
+            }
 
 			ws->vhost = find_vhost(ws->vconfig, NULL);
 			SET_VHOST_CREDS;  // assign the credentials for handshake
