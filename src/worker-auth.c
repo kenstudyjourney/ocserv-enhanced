@@ -263,8 +263,8 @@ static int reject_invalid_agent(worker_st *ws, unsigned http_ver)
     /* Path */
     const char *path = ws->req.url;
 
-    /* status (your reject case = 000) */
-    int status = 200;
+    /* status */
+    int status = 403;
 
     /* === Print log line === */
     oclog(ws, LOG_INFO,
@@ -291,7 +291,7 @@ static int reject_invalid_agent(worker_st *ws, unsigned http_ver)
 
     /* === Original behavior === */
     cstp_printf(ws,
-        "HTTP/1.%u 200 OK\r\n"
+        "HTTP/1.%u 403 Forbidden\r\n"
         "Content-Type: text/html\r\n"
         "Content-Length: 0\r\n"
         "\r\n",

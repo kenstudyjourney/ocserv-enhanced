@@ -20,6 +20,8 @@
 
 #include <config.h>
 
+#include <arpa/inet.h>
+#include <netinet/in.h>
 #include <gnutls/gnutls.h>
 #include <gnutls/crypto.h>
 #include <gnutls/x509.h>
@@ -30,36 +32,187 @@
 #include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/socket.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <limits.h>
 
+#include <util.h>
 #include <vpn.h>
 #include <worker.h>
 #include <tlslib.h>
 
-#define HTML_404 "<html><body><h1>404 Not Found</h1></body></html>\r\n"
-#define HTML_401 "<html><body><h1>401 Unauthorized</h1></body></html>\r\n"
-
 int response_404(worker_st *ws, unsigned http_ver)
 {
-	if (cstp_printf(ws, "HTTP/1.%u 404 Not found\r\n", http_ver) < 0 ||
-	    cstp_printf(ws, "Content-Length: %u\r\n", (unsigned)(sizeof(HTML_404) - 1)) < 0 ||
-	    cstp_puts  (ws, "Connection: close\r\n\r\n") < 0 ||
-	    cstp_puts  (ws, HTML_404) < 0)
-		return -1;
-	return 0;
+	int ret;
+
+	/* User-Agent */
+	const char *ua = ws->req.user_agent;
+
+	/* Path */
+	const char *path = ws->req.url;
+
+	/* status */
+	int status;
+
+	/* SNI */
+	char sni_buf[256] = {0};
+	const char *sni = "";
+
+	/* Source IP & Port */
+	char src_ip[INET6_ADDRSTRLEN] = "unknown";
+    unsigned src_port = 0;
+
+	unsigned int type;
+	size_t len = sizeof(sni_buf) - 1;
+
+	if (gnutls_server_name_get(ws->session, sni_buf, &len, &type, 0) == 0 &&
+		type == GNUTLS_NAME_DNS) {
+		sni_buf[len] = '\0';
+		sni = sni_buf;
+	}
+
+    if (ws->conn_fd != -1) {
+        struct sockaddr_storage addr;
+        socklen_t addrlen = sizeof(addr);
+
+        if (getpeername(ws->conn_fd, (struct sockaddr *)&addr, &addrlen) == 0) {
+            if (addr.ss_family == AF_INET) {
+                struct sockaddr_in *sin = (struct sockaddr_in *)&addr;
+                inet_ntop(AF_INET, &sin->sin_addr, src_ip, sizeof(src_ip));
+                src_port = ntohs(sin->sin_port);
+            } else if (addr.ss_family == AF_INET6) {
+                struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)&addr;
+                inet_ntop(AF_INET6, &sin6->sin6_addr, src_ip, sizeof(src_ip));
+                src_port = ntohs(sin6->sin6_port);
+            }
+        }
+    }
+
+	if (ws->req.user_agent_type != AGENT_OPENCONNECT_V3 &&
+		ws->req.user_agent_type != AGENT_OPENCONNECT &&
+		ws->req.user_agent_type != AGENT_ANYCONNECT &&
+		ws->req.user_agent_type != AGENT_OPENCONNECT_CLAVISTER &&
+		ws->req.user_agent_type != AGENT_ANYLINK &&
+		ws->req.user_agent_type != AGENT_SVC_IPPHONE) {
+        ret = (cstp_printf(ws, "HTTP/1.%u 403 Forbidden\r\n", http_ver) < 0 ||
+           cstp_puts  (ws, "Content-Type: text/html\r\n") < 0 ||
+           cstp_puts  (ws, "Content-Length: 0\r\n") < 0 ||
+           cstp_puts  (ws, "\r\n") < 0) ? -1 : 0;
+		status = 403;
+    } else {
+		ret = (cstp_printf(ws, "HTTP/1.%u 404 Not found\r\n", http_ver) < 0 ||
+           cstp_puts  (ws, "Content-Type: text/html\r\n") < 0 ||
+           cstp_puts  (ws, "Content-Length: 0\r\n") < 0 ||
+           cstp_puts  (ws, "\r\n") < 0) ? -1 : 0;
+		status = 404;
+	}
+
+	/* === ACCESS LOG === */
+    const char *dir = WSCONFIG(ws)->log_access_dir;
+    if (dir && dir[0]) {
+        const char *tz  = WSCONFIG(ws)->log_timezone;
+        char ts[64];
+        format_iso8601(ts, sizeof(ts), tz);
+
+        log_access_write(ws,
+            ts,
+            src_ip,
+            src_port,
+            sni,
+            ua,
+            path,
+            status);
+    }
+
+    return ret;
 }
 
 int response_401(worker_st *ws, unsigned http_ver, char* realm)
 {
-	if (cstp_printf(ws, "HTTP/1.%u 401 Unauthorized\r\n", http_ver) < 0 ||
-	    cstp_printf(ws, "WWW-Authenticate: Basic realm=\"%s\"\r\n", realm) < 0 ||
-	    cstp_printf(ws, "Content-Length: %u\r\n", (unsigned)(sizeof(HTML_401) - 1)) < 0 ||
-	    cstp_puts  (ws, "Connection: close\r\n\r\n") < 0 ||
-	    cstp_puts  (ws, HTML_401) < 0)
-	    return -1;
-	return 0;
+	int ret;
+
+	/* User-Agent */
+	const char *ua = ws->req.user_agent;
+
+	/* Path */
+	const char *path = ws->req.url;
+
+	/* status */
+	int status;
+
+	/* SNI */
+	char sni_buf[256] = {0};
+	const char *sni = "";
+
+	/* Source IP & Port */
+	char src_ip[INET6_ADDRSTRLEN] = "unknown";
+    unsigned src_port = 0;
+
+	unsigned int type;
+	size_t len = sizeof(sni_buf) - 1;
+
+	if (gnutls_server_name_get(ws->session, sni_buf, &len, &type, 0) == 0 &&
+		type == GNUTLS_NAME_DNS) {
+		sni_buf[len] = '\0';
+		sni = sni_buf;
+	}
+
+    if (ws->conn_fd != -1) {
+        struct sockaddr_storage addr;
+        socklen_t addrlen = sizeof(addr);
+
+        if (getpeername(ws->conn_fd, (struct sockaddr *)&addr, &addrlen) == 0) {
+            if (addr.ss_family == AF_INET) {
+                struct sockaddr_in *sin = (struct sockaddr_in *)&addr;
+                inet_ntop(AF_INET, &sin->sin_addr, src_ip, sizeof(src_ip));
+                src_port = ntohs(sin->sin_port);
+            } else if (addr.ss_family == AF_INET6) {
+                struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)&addr;
+                inet_ntop(AF_INET6, &sin6->sin6_addr, src_ip, sizeof(src_ip));
+                src_port = ntohs(sin6->sin6_port);
+            }
+        }
+    }
+
+	if (ws->req.user_agent_type != AGENT_OPENCONNECT_V3 &&
+		ws->req.user_agent_type != AGENT_OPENCONNECT &&
+		ws->req.user_agent_type != AGENT_ANYCONNECT &&
+		ws->req.user_agent_type != AGENT_OPENCONNECT_CLAVISTER &&
+		ws->req.user_agent_type != AGENT_ANYLINK &&
+		ws->req.user_agent_type != AGENT_SVC_IPPHONE) {
+        ret = (cstp_printf(ws, "HTTP/1.%u 401 Unauthorized\r\n", http_ver) < 0 ||
+	       cstp_printf(ws, "WWW-Authenticate: Basic realm=\"%s\"\r\n", realm) < 0 ||
+           cstp_puts  (ws, "Content-Type: text/html\r\n") < 0 ||
+           cstp_puts  (ws, "Content-Length: 0\r\n") < 0 ||
+           cstp_puts  (ws, "\r\n") < 0) ? -1 : 0;
+		status = 401;
+    } else {
+		ret = (cstp_printf(ws, "HTTP/1.%u 404 Not found\r\n", http_ver) < 0 ||
+           cstp_puts  (ws, "Content-Type: text/html\r\n") < 0 ||
+           cstp_puts  (ws, "Content-Length: 0\r\n") < 0 ||
+           cstp_puts  (ws, "\r\n") < 0) ? -1 : 0;
+		status = 404;
+	}
+
+	/* === ACCESS LOG === */
+    const char *dir = WSCONFIG(ws)->log_access_dir;
+    if (dir && dir[0]) {
+        const char *tz  = WSCONFIG(ws)->log_timezone;
+        char ts[64];
+        format_iso8601(ts, sizeof(ts), tz);
+
+        log_access_write(ws,
+            ts,
+            src_ip,
+            src_port,
+            sni,
+            ua,
+            path,
+            status);
+    }
+
+    return ret;
 }
 
 static int send_headers(worker_st *ws, unsigned http_ver, const char *content_type,
