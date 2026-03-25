@@ -334,6 +334,8 @@ typedef struct worker_st {
 	} latency;
 #endif
     bool camouflage_check_passed;
+
+	unsigned auth_attempts;
 } worker_st;
 
 void vpn_server(struct worker_st* ws);

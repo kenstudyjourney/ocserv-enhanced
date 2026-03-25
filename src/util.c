@@ -470,3 +470,4 @@ const char *extract_host_from_buffer(uint8_t *buf, size_t len, char *out, size_t
     out[0] = '\0';
     return out;
 }
+

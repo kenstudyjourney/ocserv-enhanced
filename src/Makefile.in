@@ -229,8 +229,8 @@ am__ocserv_SOURCES_DIST = llhttp/llhttp.c llhttp/llhttp.h llhttp/api.c \
 	sec-mod-auth.h sec-mod-cookies.c sec-mod-db.c sec-mod-resume.c \
 	sec-mod-resume.h sec-mod-sup-config.c sec-mod-sup-config.h \
 	common/sockdiag.h common/sockdiag.c namespace.c main-log.c \
-	icmp-ping.c icmp-ping.h ip-lease.c ip-lease.h tun.c tun.h \
-	main-limits.c main-limits.h
+	util.c icmp-ping.c icmp-ping.h ip-lease.c ip-lease.h tun.c \
+	tun.h main-limits.c main-limits.h
 @LOCAL_LLHTTP_TRUE@am__objects_4 = llhttp/llhttp.$(OBJEXT) \
 @LOCAL_LLHTTP_TRUE@	llhttp/api.$(OBJEXT) llhttp/http.$(OBJEXT)
 @ENABLE_COMPRESSION_TRUE@am__objects_5 = lzs.$(OBJEXT)
@@ -257,8 +257,8 @@ am_ocserv_OBJECTS = $(am__objects_7) $(am__objects_9) \
 	sec-mod-cookies.$(OBJEXT) sec-mod-db.$(OBJEXT) \
 	sec-mod-resume.$(OBJEXT) sec-mod-sup-config.$(OBJEXT) \
 	common/sockdiag.$(OBJEXT) namespace.$(OBJEXT) \
-	main-log.$(OBJEXT) icmp-ping.$(OBJEXT) ip-lease.$(OBJEXT) \
-	tun.$(OBJEXT) main-limits.$(OBJEXT)
+	main-log.$(OBJEXT) util.$(OBJEXT) icmp-ping.$(OBJEXT) \
+	ip-lease.$(OBJEXT) tun.$(OBJEXT) main-limits.$(OBJEXT)
 ocserv_OBJECTS = $(am_ocserv_OBJECTS)
 @LOCAL_LLHTTP_FALSE@am__DEPENDENCIES_3 = $(am__DEPENDENCIES_1)
 @ENABLE_OIDC_AUTH_TRUE@am__DEPENDENCIES_4 = $(am__DEPENDENCIES_1) \
@@ -291,8 +291,8 @@ am__ocserv_worker_SOURCES_DIST = llhttp/llhttp.c llhttp/llhttp.h \
 	worker-bandwidth.c worker-bandwidth.h worker-http.c \
 	worker-http-handlers.c worker-kkdcp.c worker-misc.c \
 	worker-privs.c worker-proxyproto.c worker-resume.c \
-	worker-vpn.c worker-svc.c worker-tun.c isolate.c isolate.h \
-	worker-latency.c worker-latency.h
+	worker-vpn.c worker-svc.c worker-tun.c isolate.c util.c \
+	isolate.h worker-latency.c worker-latency.h
 @LOCAL_LLHTTP_TRUE@am__objects_11 =  \
 @LOCAL_LLHTTP_TRUE@	llhttp/ocserv_worker-llhttp.$(OBJEXT) \
 @LOCAL_LLHTTP_TRUE@	llhttp/ocserv_worker-api.$(OBJEXT) \
@@ -331,7 +331,8 @@ am_ocserv_worker_OBJECTS = $(am__objects_14) \
 	ocserv_worker-worker-vpn.$(OBJEXT) \
 	ocserv_worker-worker-svc.$(OBJEXT) \
 	ocserv_worker-worker-tun.$(OBJEXT) \
-	ocserv_worker-isolate.$(OBJEXT) $(am__objects_15)
+	ocserv_worker-isolate.$(OBJEXT) ocserv_worker-util.$(OBJEXT) \
+	$(am__objects_15)
 ocserv_worker_OBJECTS = $(am_ocserv_worker_OBJECTS)
 @ENABLE_LATENCY_SUPPORT_TRUE@am__DEPENDENCIES_7 =  \
 @ENABLE_LATENCY_SUPPORT_TRUE@	$(am__DEPENDENCIES_1)
@@ -404,6 +405,7 @@ am__depfiles_remade = ./$(DEPDIR)/auth-unix.Po \
 	./$(DEPDIR)/ocserv_worker-str.Po \
 	./$(DEPDIR)/ocserv_worker-subconfig.Po \
 	./$(DEPDIR)/ocserv_worker-tlslib.Po \
+	./$(DEPDIR)/ocserv_worker-util.Po \
 	./$(DEPDIR)/ocserv_worker-valid-hostname.Po \
 	./$(DEPDIR)/ocserv_worker-vasprintf.Po \
 	./$(DEPDIR)/ocserv_worker-worker-auth.Po \
@@ -427,13 +429,13 @@ am__depfiles_remade = ./$(DEPDIR)/auth-unix.Po \
 	./$(DEPDIR)/sec-mod-sup-config.Po ./$(DEPDIR)/sec-mod.Po \
 	./$(DEPDIR)/setproctitle.Po ./$(DEPDIR)/str.Po \
 	./$(DEPDIR)/subconfig.Po ./$(DEPDIR)/tlslib.Po \
-	./$(DEPDIR)/tun.Po ./$(DEPDIR)/valid-hostname.Po \
-	./$(DEPDIR)/vasprintf.Po ./$(DEPDIR)/worker-log.Po \
-	acct/$(DEPDIR)/pam.Po acct/$(DEPDIR)/radius.Po \
-	auth/$(DEPDIR)/common.Po auth/$(DEPDIR)/gssapi.Po \
-	auth/$(DEPDIR)/openidconnect.Po auth/$(DEPDIR)/pam.Po \
-	auth/$(DEPDIR)/plain.Po auth/$(DEPDIR)/radius.Po \
-	ccan/hash/$(DEPDIR)/libccan_a-hash.Po \
+	./$(DEPDIR)/tun.Po ./$(DEPDIR)/util.Po \
+	./$(DEPDIR)/valid-hostname.Po ./$(DEPDIR)/vasprintf.Po \
+	./$(DEPDIR)/worker-log.Po acct/$(DEPDIR)/pam.Po \
+	acct/$(DEPDIR)/radius.Po auth/$(DEPDIR)/common.Po \
+	auth/$(DEPDIR)/gssapi.Po auth/$(DEPDIR)/openidconnect.Po \
+	auth/$(DEPDIR)/pam.Po auth/$(DEPDIR)/plain.Po \
+	auth/$(DEPDIR)/radius.Po ccan/hash/$(DEPDIR)/libccan_a-hash.Po \
 	ccan/htable/$(DEPDIR)/libccan_a-htable.Po \
 	ccan/list/$(DEPDIR)/libccan_a-list.Po \
 	ccan/str/hex/$(DEPDIR)/libccan_a-hex.Po \
@@ -785,7 +787,7 @@ ocserv_SOURCES = $(CORE_SOURCES) $(AUTH_SOURCES) $(ACCT_SOURCES) \
 	proc-search.h route-add.c route-add.h sec-mod.c sec-mod.h sec-mod-acct.h \
 	sec-mod-auth.c sec-mod-auth.h sec-mod-cookies.c sec-mod-db.c \
 	sec-mod-resume.c sec-mod-resume.h sec-mod-sup-config.c sec-mod-sup-config.h \
-	common/sockdiag.h common/sockdiag.c namespace.c main-log.c \
+	common/sockdiag.h common/sockdiag.c namespace.c main-log.c util.c \
 	icmp-ping.c icmp-ping.h ip-lease.c ip-lease.h tun.c tun.h \
 	main-limits.c main-limits.h
 
@@ -796,7 +798,7 @@ ocserv_worker_SOURCES = $(CORE_SOURCES) html.c html.h http-heads.h \
 	worker-bandwidth.h worker-http.c worker-http-handlers.c \
 	worker-kkdcp.c worker-misc.c worker-privs.c \
 	worker-proxyproto.c worker-resume.c worker-vpn.c worker-svc.c \
-	worker-tun.c isolate.c isolate.h $(am__append_8)
+	worker-tun.c isolate.c util.c isolate.h $(am__append_8)
 ocserv_worker_LDADD = $(CORE_LDADD) $(am__append_9)
 noinst_LIBRARIES = libipc.a libcommon.a libccan.a $(am__append_17) \
 	$(am__append_18)
@@ -1288,6 +1290,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ocserv_worker-str.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ocserv_worker-subconfig.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ocserv_worker-tlslib.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ocserv_worker-util.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ocserv_worker-valid-hostname.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ocserv_worker-vasprintf.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ocserv_worker-worker-auth.Po@am__quote@ # am--include-marker
@@ -1318,6 +1321,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/subconfig.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/tlslib.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/tun.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/util.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/valid-hostname.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/vasprintf.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/worker-log.Po@am__quote@ # am--include-marker
@@ -2277,6 +2281,20 @@ ocserv_worker-isolate.obj: isolate.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(ocserv_worker_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o ocserv_worker-isolate.obj `if test -f 'isolate.c'; then $(CYGPATH_W) 'isolate.c'; else $(CYGPATH_W) '$(srcdir)/isolate.c'; fi`
 
+ocserv_worker-util.o: util.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(ocserv_worker_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT ocserv_worker-util.o -MD -MP -MF $(DEPDIR)/ocserv_worker-util.Tpo -c -o ocserv_worker-util.o `test -f 'util.c' || echo '$(srcdir)/'`util.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/ocserv_worker-util.Tpo $(DEPDIR)/ocserv_worker-util.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='util.c' object='ocserv_worker-util.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(ocserv_worker_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o ocserv_worker-util.o `test -f 'util.c' || echo '$(srcdir)/'`util.c
+
+ocserv_worker-util.obj: util.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(ocserv_worker_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT ocserv_worker-util.obj -MD -MP -MF $(DEPDIR)/ocserv_worker-util.Tpo -c -o ocserv_worker-util.obj `if test -f 'util.c'; then $(CYGPATH_W) 'util.c'; else $(CYGPATH_W) '$(srcdir)/util.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/ocserv_worker-util.Tpo $(DEPDIR)/ocserv_worker-util.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='util.c' object='ocserv_worker-util.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(ocserv_worker_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o ocserv_worker-util.obj `if test -f 'util.c'; then $(CYGPATH_W) 'util.c'; else $(CYGPATH_W) '$(srcdir)/util.c'; fi`
+
 ocserv_worker-worker-latency.o: worker-latency.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(ocserv_worker_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT ocserv_worker-worker-latency.o -MD -MP -MF $(DEPDIR)/ocserv_worker-worker-latency.Tpo -c -o ocserv_worker-worker-latency.o `test -f 'worker-latency.c' || echo '$(srcdir)/'`worker-latency.c
 @am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/ocserv_worker-worker-latency.Tpo $(DEPDIR)/ocserv_worker-worker-latency.Po
@@ -2487,6 +2505,7 @@ distclean: distclean-am
 	-rm -f ./$(DEPDIR)/ocserv_worker-str.Po
 	-rm -f ./$(DEPDIR)/ocserv_worker-subconfig.Po
 	-rm -f ./$(DEPDIR)/ocserv_worker-tlslib.Po
+	-rm -f ./$(DEPDIR)/ocserv_worker-util.Po
 	-rm -f ./$(DEPDIR)/ocserv_worker-valid-hostname.Po
 	-rm -f ./$(DEPDIR)/ocserv_worker-vasprintf.Po
 	-rm -f ./$(DEPDIR)/ocserv_worker-worker-auth.Po
@@ -2517,6 +2536,7 @@ distclean: distclean-am
 	-rm -f ./$(DEPDIR)/subconfig.Po
 	-rm -f ./$(DEPDIR)/tlslib.Po
 	-rm -f ./$(DEPDIR)/tun.Po
+	-rm -f ./$(DEPDIR)/util.Po
 	-rm -f ./$(DEPDIR)/valid-hostname.Po
 	-rm -f ./$(DEPDIR)/vasprintf.Po
 	-rm -f ./$(DEPDIR)/worker-log.Po
@@ -2652,6 +2672,7 @@ maintainer-clean: maintainer-clean-am
 	-rm -f ./$(DEPDIR)/ocserv_worker-str.Po
 	-rm -f ./$(DEPDIR)/ocserv_worker-subconfig.Po
 	-rm -f ./$(DEPDIR)/ocserv_worker-tlslib.Po
+	-rm -f ./$(DEPDIR)/ocserv_worker-util.Po
 	-rm -f ./$(DEPDIR)/ocserv_worker-valid-hostname.Po
 	-rm -f ./$(DEPDIR)/ocserv_worker-vasprintf.Po
 	-rm -f ./$(DEPDIR)/ocserv_worker-worker-auth.Po
@@ -2682,6 +2703,7 @@ maintainer-clean: maintainer-clean-am
 	-rm -f ./$(DEPDIR)/subconfig.Po
 	-rm -f ./$(DEPDIR)/tlslib.Po
 	-rm -f ./$(DEPDIR)/tun.Po
+	-rm -f ./$(DEPDIR)/util.Po
 	-rm -f ./$(DEPDIR)/valid-hostname.Po
 	-rm -f ./$(DEPDIR)/vasprintf.Po
 	-rm -f ./$(DEPDIR)/worker-log.Po

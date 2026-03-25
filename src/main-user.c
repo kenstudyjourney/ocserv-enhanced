@@ -39,6 +39,7 @@
 #include <gettime.h>
 
 #include <util.h>
+#include <worker.h>
 #include <vpn.h>
 #include <str.h>
 #include <tun.h>
