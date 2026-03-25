@@ -38,6 +38,7 @@
 #endif
 #include <gettime.h>
 
+#include <util.h>
 #include <vpn.h>
 #include <str.h>
 #include <tun.h>
@@ -480,6 +481,8 @@ int ret;
 
 	ctl_handler_notify(s,proc, 1);
 	add_utmp_entry(s, proc);
+	
+	log_connection_write(s, proc, "CONNECT");
 
 	ret = call_script(s, proc, SCRIPT_CONNECT);
 	if (ret < 0)
@@ -492,12 +495,17 @@ void user_hostname_update(main_server_st *s, struct proc_st* proc)
 {
 	if (proc->host_updated != 0)
 		return;
+
+	log_connection_write(s, proc, "UPDATE");
+
 	call_script(s, proc, SCRIPT_HOST_UPDATE);
 	proc->host_updated = 1;
 }
 
 void user_disconnected(main_server_st *s, struct proc_st* proc)
 {
+	log_connection_write(s, proc, "DISCONNECT");
+
 	ctl_handler_notify(s,proc, 0);
 	remove_utmp_entry(s, proc);
 	call_script(s, proc, SCRIPT_DISCONNECT);

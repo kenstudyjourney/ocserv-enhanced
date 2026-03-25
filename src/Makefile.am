@@ -66,7 +66,7 @@ ocserv_SOURCES = $(CORE_SOURCES) $(AUTH_SOURCES) $(ACCT_SOURCES) \
 	proc-search.h route-add.c route-add.h sec-mod.c sec-mod.h sec-mod-acct.h \
 	sec-mod-auth.c sec-mod-auth.h sec-mod-cookies.c sec-mod-db.c \
 	sec-mod-resume.c sec-mod-resume.h sec-mod-sup-config.c sec-mod-sup-config.h \
-	common/sockdiag.h common/sockdiag.c namespace.c main-log.c \
+	common/sockdiag.h common/sockdiag.c namespace.c main-log.c util.c \
 	icmp-ping.c icmp-ping.h ip-lease.c ip-lease.h tun.c tun.h \
 	main-limits.c main-limits.h
 

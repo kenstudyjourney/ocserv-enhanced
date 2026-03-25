@@ -370,7 +370,9 @@ struct cfg_st {
 	size_t sni_whitelist_size;
 
 	char *log_access_dir;
-	char *log_access_timezone;
+	char *log_auth_dir;
+	char *log_connection_dir;
+	char *log_timezone;
 };
 
 struct perm_cfg_st {

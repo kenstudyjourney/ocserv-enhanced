@@ -927,14 +927,7 @@ void vpn_server(struct worker_st *ws)
         struct cfg_st *cfg = GETCONFIG(ws);
 
         const char *dir = WSCONFIG(ws)->log_access_dir;
-        const char *tz  = WSCONFIG(ws)->log_access_timezone;
-
-        // oclog(ws, LOG_INFO, "sni_whitelist_size: %zu", cfg->sni_whitelist_size);
-
-        // oclog(ws, LOG_INFO, "Printing Whitelisted SNIs:");
-        // for (size_t i = 0; i < cfg->sni_whitelist_size; i++) {
-        //     oclog(ws, LOG_INFO, "whitelisted SNI: %s", cfg->sni_whitelist[i]);
-        // }
+        const char *tz  = WSCONFIG(ws)->log_timezone;
 
         if (test_for_tcp_health_probe(ws) != 0) {
             oclog(ws, LOG_DEBUG,
@@ -974,20 +967,30 @@ void vpn_server(struct worker_st *ws)
             }
 
 			if (!allowed) {
-                // char sni_buf[256] = {0};
-                // const char *sni = extract_sni_from_client_hello(
-                //     ws->buffer,
-                //     sizeof(ws->buffer),
-                //     sni_buf,
-                //     sizeof(sni_buf)
-                // );
-
                 /* === timestamp === */
                 char ts[64];
                 format_iso8601(ts, sizeof(ts), tz);
 
-                /* === src IP === */
-                const char *src_ip = ws->remote_ip_str[0] ? ws->remote_ip_str : "unknown";
+                /* === src IP & port === */
+                char src_ip[INET6_ADDRSTRLEN] = "unknown";
+                unsigned src_port = 0;
+
+                if (ws->conn_fd != -1) {
+                    struct sockaddr_storage addr;
+                    socklen_t addrlen = sizeof(addr);
+
+                    if (getpeername(ws->conn_fd, (struct sockaddr *)&addr, &addrlen) == 0) {
+                        if (addr.ss_family == AF_INET) {
+                            struct sockaddr_in *sin = (struct sockaddr_in *)&addr;
+                            inet_ntop(AF_INET, &sin->sin_addr, src_ip, sizeof(src_ip));
+                            src_port = ntohs(sin->sin_port);
+                        } else if (addr.ss_family == AF_INET6) {
+                            struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)&addr;
+                            inet_ntop(AF_INET6, &sin6->sin6_addr, src_ip, sizeof(src_ip));
+                            src_port = ntohs(sin6->sin6_port);
+                        }
+                    }
+                }
 
                 /* === TCP RST case === */
                 const char *ua = "";
@@ -996,9 +999,10 @@ void vpn_server(struct worker_st *ws)
 
                 /* === Print log line === */
                 oclog(ws, LOG_INFO,
-                    "[%s] %s %s \"%s\" \"%s\" %03d",
+                    "[%s] %s %d %s \"%s\" \"%s\" %03d",
                     ts,
                     src_ip,
+                    src_port,
                     host,
                     ua,
                     path,
@@ -1014,7 +1018,7 @@ void vpn_server(struct worker_st *ws)
 
                 /* === write log === */
                 if (dir && dir[0]) {
-                    log_access_write(ws, ts, src_ip, host, ua, path, status);
+                    log_access_write(ws, ts, src_ip, src_port, host, ua, path, status);
                 }
 
                 /* === normal log === */

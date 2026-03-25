@@ -207,7 +207,7 @@ static int reject_invalid_agent(worker_st *ws, unsigned http_ver)
     oclog(ws, LOG_INFO, "entering `reject_invalid_agent` ...");
 
     const char *dir = WSCONFIG(ws)->log_access_dir;
-    const char *tz  = WSCONFIG(ws)->log_access_timezone;
+    const char *tz  = WSCONFIG(ws)->log_timezone;
 
     /* === Extract fields === */
 
@@ -216,7 +216,25 @@ static int reject_invalid_agent(worker_st *ws, unsigned http_ver)
     format_iso8601(ts, sizeof(ts), tz);
 
     /* source IP */
-    const char *src_ip = ws->remote_ip_str[0] ? ws->remote_ip_str : "unknown";
+	char src_ip[INET6_ADDRSTRLEN] = "unknown";
+    unsigned src_port = 0;
+
+    if (ws->conn_fd != -1) {
+        struct sockaddr_storage addr;
+        socklen_t addrlen = sizeof(addr);
+
+        if (getpeername(ws->conn_fd, (struct sockaddr *)&addr, &addrlen) == 0) {
+            if (addr.ss_family == AF_INET) {
+                struct sockaddr_in *sin = (struct sockaddr_in *)&addr;
+                inet_ntop(AF_INET, &sin->sin_addr, src_ip, sizeof(src_ip));
+                src_port = ntohs(sin->sin_port);
+            } else if (addr.ss_family == AF_INET6) {
+                struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)&addr;
+                inet_ntop(AF_INET6, &sin6->sin6_addr, src_ip, sizeof(src_ip));
+                src_port = ntohs(sin6->sin6_port);
+            }
+        }
+    }
 
     /* SNI */
 	char sni_buf[256] = {0};
@@ -246,9 +264,10 @@ static int reject_invalid_agent(worker_st *ws, unsigned http_ver)
 
     /* === Print log line === */
     oclog(ws, LOG_INFO,
-        "[%s] %s %s \"%s\" \"%s\" %03d",
+        "[%s] %s %i %s \"%s\" \"%s\" %03d",
         ts,
         src_ip,
+		src_port,
         sni,
         ua,
         path,
@@ -263,7 +282,7 @@ static int reject_invalid_agent(worker_st *ws, unsigned http_ver)
     }
 
 	if (dir && dir[0]) {
-		log_access_write(ws, ts, src_ip, sni, ua, path, status);
+		log_access_write(ws, ts, src_ip, src_port, sni, ua, path, status);
     }
 
     /* === Original behavior === */
@@ -561,16 +580,36 @@ int get_auth_handler(worker_st * ws, unsigned http_ver)
         return reject_invalid_agent(ws, http_ver);
     }
 
+	ws->auth_attempts = 0;
+
 	/* === logging for valid client === */
 	const char *dir = WSCONFIG(ws)->log_access_dir;
-	const char *tz = WSCONFIG(ws)->log_access_timezone;
+	const char *tz = WSCONFIG(ws)->log_timezone;
 
 	/* timestamp */
 	char ts[64];
 	format_iso8601(ts, sizeof(ts), tz);
 
 	/* source IP */
-	const char *src_ip = ws->remote_ip_str[0] ? ws->remote_ip_str : "unknown";
+	char src_ip[INET6_ADDRSTRLEN] = "unknown";
+    unsigned src_port = 0;
+
+    if (ws->conn_fd != -1) {
+        struct sockaddr_storage addr;
+        socklen_t addrlen = sizeof(addr);
+
+        if (getpeername(ws->conn_fd, (struct sockaddr *)&addr, &addrlen) == 0) {
+            if (addr.ss_family == AF_INET) {
+                struct sockaddr_in *sin = (struct sockaddr_in *)&addr;
+                inet_ntop(AF_INET, &sin->sin_addr, src_ip, sizeof(src_ip));
+                src_port = ntohs(sin->sin_port);
+            } else if (addr.ss_family == AF_INET6) {
+                struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)&addr;
+                inet_ntop(AF_INET6, &sin6->sin6_addr, src_ip, sizeof(src_ip));
+                src_port = ntohs(sin6->sin6_port);
+            }
+        }
+    }
 
 	/* User-Agent */
 	const char *ua = ws->req.user_agent;
@@ -596,9 +635,10 @@ int get_auth_handler(worker_st * ws, unsigned http_ver)
 
 	/* === Print log line === */
 	oclog(ws, LOG_INFO,
-		"[%s] %s %s \"%s\" \"%s\" %03d",
+		"[%s] %s %i %s \"%s\" \"%s\" %03d",
 		ts,
 		src_ip,
+		src_port,
 		sni,
 		ua,
 		path,
@@ -614,7 +654,7 @@ int get_auth_handler(worker_st * ws, unsigned http_ver)
 
 	/* === write log === */
 	if (dir && dir[0]) {
-		log_access_write(ws, ts, src_ip, sni, ua, path, status);
+		log_access_write(ws, ts, src_ip, src_port, sni, ua, path, status);
 	}
 
 	return get_auth_handler2(ws, http_ver, NULL, 0);
@@ -1602,6 +1642,28 @@ int post_auth_handler(worker_st * ws, unsigned http_ver)
 	unsigned def_group = 0;
 	unsigned pcounter = 0;
 
+	// Prepare Data for Logging
+	const char *dir = WSCONFIG(ws)->log_access_dir;
+	const char *tz  = WSCONFIG(ws)->log_timezone;
+
+	char ts[64];
+	format_iso8601(ts, sizeof(ts), tz);
+
+	const char *src_ip = ws->remote_ip_str[0] ? ws->remote_ip_str : "unknown";
+
+	/* port */
+	int src_port = 0;
+	if (ws->remote_addr.ss_family == AF_INET) {
+		struct sockaddr_in *sin = (struct sockaddr_in *)&ws->remote_addr;
+		src_port = ntohs(sin->sin_port);
+	} else if (ws->remote_addr.ss_family == AF_INET6) {
+		struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)&ws->remote_addr;
+		src_port = ntohs(sin6->sin6_port);
+	}
+
+	/* attempts */
+	int attempts = ws->auth_attempts;
+
 	if (req->body_length > 0) {
 		oclog(ws, LOG_HTTP_DEBUG, "POST body: '%.*s'", (int)req->body_length,
 		      req->body);
@@ -1863,10 +1925,36 @@ int post_auth_handler(worker_st * ws, unsigned http_ver)
 	}
 
 	if (ret == ERR_AUTH_CONTINUE) {
+		attempts = ws->auth_attempts;
+
+		/* === Print log line === */
+		oclog(ws, LOG_INFO,
+			"[%s] %s %s %d %d",
+			ts,
+			ws->username,
+			src_ip,
+			src_port,
+			attempts
+		);
+
+		/* Debug config */
+		if (dir && dir[0]) {
+			oclog(ws, LOG_INFO, "auth log directory: %s", dir);
+		} else {
+			oclog(ws, LOG_INFO, "auth log directory not set");
+		}
+
+		/* === write log === */
+		if (dir && dir[0]) {
+			log_auth_write(ws, ts, ws->username, src_ip, src_port, attempts);
+		}
 
 		oclog(ws, LOG_DEBUG, "continuing authentication for '%s'",
 		      ws->username);
 		ws->auth_state = S_AUTH_REQ;
+
+		ws->auth_attempts++;
+		oclog(ws, LOG_INFO, "ws->auth_attempts incremented to %u", (unsigned)ws->auth_attempts);
 
 		if (ws->selected_auth->type & AUTH_TYPE_GSSAPI) {
 			ret = basic_auth_handler(ws, http_ver, msg);
@@ -1902,6 +1990,29 @@ int post_auth_handler(worker_st * ws, unsigned http_ver)
 	return get_auth_handler(ws, http_ver);
 
  auth_fail:
+	attempts = ws->auth_attempts;
+
+	/* === Print log line === */
+	oclog(ws, LOG_INFO,
+		"[%s] %s %s %d %d",
+		ts,
+		ws->username,
+		src_ip,
+		src_port,
+		attempts
+	);
+
+	/* Debug config */
+	if (dir && dir[0]) {
+		oclog(ws, LOG_INFO, "auth log directory: %s", dir);
+	} else {
+		oclog(ws, LOG_INFO, "auth log directory not set");
+	}
+
+	/* === write log === */
+	if (dir && dir[0]) {
+		log_auth_write(ws, ts, ws->username, src_ip, src_port, attempts);
+	}
 
 	if (sd != -1)
 		close(sd);

@@ -1216,8 +1216,12 @@ static int cfg_ini_handler(void *_ctx, const char *section, const char *name, co
 		parse_sni_whitelist(config, value);
 	} else if (strcmp(name, "log-access-dir") == 0) {
 		READ_STRING(config->log_access_dir);
-	} else if (strcmp(name, "log-access-timezone") == 0) {
-		READ_STRING(config->log_access_timezone);
+	} else if (strcmp(name, "log-auth-dir") == 0) {
+		READ_STRING(config->log_auth_dir);
+	} else if (strcmp(name, "log-connection-dir") == 0) {
+		READ_STRING(config->log_connection_dir);
+	} else if (strcmp(name, "log-timezone") == 0) {
+		READ_STRING(config->log_timezone);
 	} else {
 		if (reload == 0)
 			fprintf(stderr, WARNSTR"skipping unknown option '%s'\n", name);
